@@ -1,7 +1,7 @@
 # Deployment Information
 
 ## Public URL
-https://2a202600141nguyencongnhattanday12-production.up.railway.app
+https://2a202600141nguyencongnhattanday12-production-9dc8.up.railway.app
 
 ## Platform
 Railway
@@ -10,14 +10,14 @@ Railway
 
 ### Health Check
 ```bash
-curl https://2a202600141nguyencongnhattanday12-production.up.railway.app/health
+curl https://2a202600141nguyencongnhattanday12-production-9dc8.up.railway.app/health
 # Expected: {"status": "ok", ...}
 ```
 
 ### API Test (with authentication)
 ```bash
 # Thay YOUR_KEY bằng giá trị AGENT_API_KEY trong Railway Variables
-curl -X POST https://2a202600141nguyencongnhattanday12-production.up.railway.app/ask \
+curl -X POST https://2a202600141nguyencongnhattanday12-production-9dc8.up.railway.app/ask \
   -H "X-API-Key: YOUR_KEY" \
   -H "Content-Type: application/json" \
   -d '{"question": "Hello, how are you?"}'

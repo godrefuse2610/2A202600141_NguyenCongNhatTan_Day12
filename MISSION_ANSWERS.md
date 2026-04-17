@@ -79,9 +79,12 @@ $ curl -X POST "http://localhost:8000/ask?question=Hello" \
 {"question":"Hello","answer":"Đây là câu trả lời từ AI agent (mock). Trong production, đây sẽ là response từ OpenAI/Anthropic."}
 
 4.2: lấy token
+
 $ curl http://localhost:8000/auth/token -X POST   -H "Content-Type: application/json"   -d '{"username": "student", "password": "demo123"}'
 {"access_token":"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJzdHVkZW50Iiwicm9sZSI6InVzZXIiLCJpYXQiOjE3NzY0Mjk3OTYsImV4cCI6MTc3NjQzMzM5Nn0.cSTmgQHjmCTnnsddb3imGbspiDR55jtjgpFtKvXyaB0","token_type":"bearer","expires_in_minutes":60,"hint":"Include in header: Authorization: Bearer eyJhbGciOiJIUzI1NiIs..."}
+
 4.2: Có token 
+
 $ curl http://localhost:8000/ask -X POST   -H "Authorization: Bearer $TOKEN"   -H "Content-Type: application/json"   -d '{"question": "Explain JWT"}'
 {"question":"Explain JWT","answer":"Agent đang hoạt động tốt! (mock response) Hỏi thêm câu hỏi đi nhé.","usage":{"requests_remaining":9,"budget_remaining_usd":0.0001068}}
 
