@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: ai-agent
+    runtime: docker
+    plan: free
+    region: singapore
+    envVars:
+      - key: AGENT_API_KEY
+        generateValue: true
+      - key: REDIS_URL
+        fromService:
+          name: cache
+          type: redis
+          property: connectionString
+
+  - type: redis
+    name: cache
+    plan: free
+    region: singapore
+    ipAllowList: []
