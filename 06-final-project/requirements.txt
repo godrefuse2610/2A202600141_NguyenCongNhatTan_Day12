@@ -1,0 +1,6 @@
+fastapi
+uvicorn
+pydantic-settings
+redis
+gunicorn
+psutil
