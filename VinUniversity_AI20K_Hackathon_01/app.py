@@ -2,6 +2,7 @@ import os
 import uuid
 import logging
 import json
+from pathlib import Path
 from flask import (
     Flask, render_template, request, session,
     redirect, url_for, jsonify, flash
@@ -12,13 +13,19 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from config import SUGGESTED_QUESTIONS
+from config import SUGGESTED_QUESTIONS, PDFS_DIR, CHROMA_DIR
 from backend.auth import check_credentials, login_required
 from backend.memory import ConversationMemory
 from backend.pdf_manager import PDFManager
 from backend.chatbot import VinLexChatbot
 from backend.rate_limiter import rate_limiter
 from backend.cost_guard import cost_guard
+
+# ─────────────────────────────────────────────
+# Pre-flight: Đảm bảo các thư mục tồn tại
+# ─────────────────────────────────────────────
+for d in [PDFS_DIR, CHROMA_DIR]:
+    os.makedirs(d, exist_ok=True)
 
 # Cấu hình Structured Logging
 logging.basicConfig(
@@ -31,13 +38,18 @@ app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", "dev-secret-key-vinlex")
 
 # Cấu hình Redis cho Session (Stateless)
+# Ưu tiên lấy REDIS_URL từ Railway, nếu không có mới dùng localhost
 redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
-app.config['SESSION_TYPE'] = 'redis'
-app.config['SESSION_PERMANENT'] = False
-app.config['SESSION_USE_SIGNER'] = True
-app.config['SESSION_REDIS'] = redis.from_url(redis_url)
+logger.info(f"Connecting to Redis at: {redis_url.split('@')[-1]}") # Log an toàn không lộ pass
 
-Session(app)
+try:
+    app.config['SESSION_TYPE'] = 'redis'
+    app.config['SESSION_PERMANENT'] = False
+    app.config['SESSION_USE_SIGNER'] = True
+    app.config['SESSION_REDIS'] = redis.from_url(redis_url)
+    Session(app)
+except Exception as e:
+    logger.error(f"Failed to initialize Redis session: {e}")
 
 # Khởi tạo Singletons
 memory = ConversationMemory()
@@ -88,46 +100,54 @@ def api_chat():
     if not cost_guard.check_budget(sid):
         return jsonify({"error": "Budget exceeded"}), 402
 
-    data = request.get_json(force=True)
-    conv_id = data.get("conversation_id")
-    message = (data.get("message") or "").strip()
+    try:
+        data = request.get_json(force=True)
+        conv_id = data.get("conversation_id")
+        message = (data.get("message") or "").strip()
 
-    if not message:
-        return jsonify({"error": "Empty message"}), 400
+        if not message:
+            return jsonify({"error": "Empty message"}), 400
 
-    if not conv_id:
-        conv = memory.create_conversation(sid)
-        conv_id = conv["id"]
-    else:
-        conv = memory.get_conversation(sid, conv_id)
-        if conv is None:
+        if not conv_id:
             conv = memory.create_conversation(sid)
             conv_id = conv["id"]
+        else:
+            conv = memory.get_conversation(sid, conv_id)
+            if conv is None:
+                conv = memory.create_conversation(sid)
+                conv_id = conv["id"]
 
-    memory.add_message(sid, conv_id, role="user", content=message)
-    recent = memory.get_recent_messages(sid, conv_id, n=10)
-    history = recent[:-1] if recent else []
+        memory.add_message(sid, conv_id, role="user", content=message)
+        recent = memory.get_recent_messages(sid, conv_id, n=10)
+        history = [m for m in recent if m["role"] in ("user", "assistant")]
+        # Trừ tin nhắn vừa thêm vào
+        history = history[:-1] if history else []
 
-    # Xử lý chatbot
-    result = chatbot.process(message, history)
+        # Xử lý chatbot
+        result = chatbot.process(message, history)
 
-    # 3. Ghi nhận chi phí giả lập
-    cost_guard.record_usage(sid, 0.001)
+        # 3. Ghi nhận chi phí giả lập
+        cost_guard.record_usage(sid, 0.001)
 
-    memory.add_message(
-        sid, conv_id,
-        role="assistant",
-        content=result["answer"],
-        sources=result.get("sources", []),
-        query_type=result.get("query_type", ""),
-    )
+        memory.add_message(
+            sid, conv_id,
+            role="assistant",
+            content=result["answer"],
+            sources=result.get("sources", []),
+            query_type=result.get("query_type", ""),
+        )
 
-    return jsonify({
-        "conversation_id": conv_id,
-        "answer": result["answer"],
-        "sources": result.get("sources", []),
-        "query_type": result.get("query_type", ""),
-    })
+        return jsonify({
+            "conversation_id": conv_id,
+            "answer": result["answer"],
+            "sources": result.get("sources", []),
+            "query_type": result.get("query_type", ""),
+            "redirect_to_contact": result.get("redirect_to_contact", False),
+            "suggest_counseling": result.get("suggest_counseling", False)
+        })
+    except Exception as e:
+        logger.error(f"Chat error: {e}")
+        return jsonify({"error": str(e)}), 500
 
 # ─────────────────────────────────────────────
 # Conversation History API
