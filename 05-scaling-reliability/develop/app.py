@@ -103,6 +103,7 @@ async def ask_agent(question: str):
 
 @app.get("/health")
 def health():
+    return {"status": "ok"}
     """
     LIVENESS PROBE — "Agent có còn sống không?"
 
@@ -157,6 +158,17 @@ def ready():
     - Đang shutdown
     - Database/dependencies chưa connect
     """
+    try:
+        # Check Redis
+        r.ping()
+        # Check database
+        db.execute("SELECT 1")
+        return {"status": "ready"}
+    except:
+        return JSONResponse(
+            status_code=503,
+            content={"status": "not ready"}
+        )
     if not _is_ready:
         raise HTTPException(
             status_code=503,
@@ -172,19 +184,28 @@ def ready():
 # GRACEFUL SHUTDOWN
 # ──────────────────────────────────────────────────────────
 
-def handle_sigterm(signum, frame):
-    """
-    SIGTERM là signal platform gửi khi muốn dừng container.
-    Khác với SIGKILL (không thể catch được).
+def shutdown_handler(signum, frame):
+    global _is_ready
+    logger.info(f"Received signal {signum}. Stopping new requests...")
+    _is_ready = False
 
-    uvicorn bắt SIGTERM tự động và gọi lifespan shutdown.
-    Hàm này để log thêm thông tin.
-    """
-    logger.info(f"Received signal {signum} — uvicorn will handle graceful shutdown")
+    # Chờ request đang xử lý hoàn thành (tối đa 30 giây)
+    timeout = 30
+    elapsed = 0
+    while _in_flight_requests > 0 and elapsed < timeout:
+        logger.info(f"Waiting for {_in_flight_requests} in-flight requests to finish... ({elapsed}s)")
+        time.sleep(1)
+        elapsed += 1
+
+    logger.info("Closing connections...")
+    # Thêm logic đóng DB/Redis connections tại đây nếu có
+
+    logger.info("✅ Shutdown complete. Exiting.")
+    os._exit(0)
 
 
-signal.signal(signal.SIGTERM, handle_sigterm)
-signal.signal(signal.SIGINT, handle_sigterm)
+signal.signal(signal.SIGTERM, shutdown_handler)
+signal.signal(signal.SIGINT, shutdown_handler)
 
 
 if __name__ == "__main__":
